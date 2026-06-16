@@ -142,6 +142,12 @@ static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
     return JS_MKVAL(JS_TAG_SHORT_BIG_INT, d);
 }
 
+typedef void *HeapPtr;
+typedef uintptr_t HeapPtrInt;
+#define HDEREF(tp, p) ((tp *)(p))
+#define HDEREF_OR_NULL(tp, p) ((tp*)(p))
+#define HREF(p) p
+
 #elif defined(JS_NAN_BOXING)
 
 typedef uint64_t JSValue;
@@ -151,6 +157,19 @@ typedef uint64_t JSValue;
 #ifndef JS_BASE_ADDR
 #define JS_BASE_ADDR 0
 #endif
+
+typedef uint32_t HeapPtr;
+typedef uint32_t HeapPtrInt;
+
+#define HDEREF(tp, p) ((tp *)((uintptr_t)JS_BASE_ADDR + (p)))
+static inline void *__hderef_or_null(HeapPtr p) {
+    return p ? (void *)((uintptr_t)JS_BASE_ADDR + p) : NULL;
+}
+#define HDEREF_OR_NULL(tp, p) ((tp*)__hderef_or_null(p))
+static inline HeapPtr HREF(void *p) {
+    uintptr_t up = (uintptr_t)p;
+    return up ? (HeapPtr)(up - JS_BASE_ADDR) : 0;
+}
 
 #define JS_VALUE_GET_TAG(v) (int)((v) >> 32)
 #define JS_VALUE_GET_INT(v) (int)(v)
@@ -283,6 +302,13 @@ static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int64_t d)
     v.u.short_big_int = d;
     return v;
 }
+
+typedef void *HeapPtr;
+typedef uintptr_t HeapPtrInt;
+
+#define HDEREF(tp, p) ((tp*)(p))
+#define HDEREF_OR_NULL(tp, p) ((tp*)(p))
+#define HREF(p)   p
 
 #endif /* !JS_NAN_BOXING */
 

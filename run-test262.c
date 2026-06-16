@@ -591,6 +591,7 @@ static void *agent_start(void *arg)
 #if defined(JS_USE_MIMALLOC)
     extern JSMallocFunctions mimalloc_mf;
     rt = JS_NewRuntime2(&mimalloc_mf, NULL);
+    JS_SetMemoryLimit(rt, JS_ARENA_SIZE);
 #else
     rt = JS_NewRuntime();
 #endif // !JS_USE_MIMALLOC
@@ -2251,7 +2252,6 @@ int main(int argc, char **argv)
 #if defined(JS_USE_MIMALLOC)
     extern void mimalloc_setup(void);
     mimalloc_setup();
-    JS_SetMemoryLimit(rt, JS_ARENA_SIZE);
 #endif
 
     init_thread_local_storage(tls);
