@@ -64,14 +64,14 @@ typedef uint32_t JSAtom;
 #define JS_NAN_BOXING
 #endif
 
-#if defined(__SIZEOF_INT128__) && (INTPTR_MAX >= INT64_MAX)
+#if defined(__SIZEOF_INT128__) && (INTPTR_MAX >= INT64_MAX) && !defined(JS_NAN_BOXING)
 #define JS_LIMB_BITS 64
 #else
 #define JS_LIMB_BITS 32
 #endif
 
 #define JS_SHORT_BIG_INT_BITS JS_LIMB_BITS
-    
+
 enum {
     /* all tags with a reference count are negative */
     JS_TAG_FIRST       = -9, /* first negative tag */
@@ -148,14 +148,18 @@ typedef uint64_t JSValue;
 
 #define JSValueConst JSValue
 
+#ifndef JS_BASE_ADDR
+#define JS_BASE_ADDR 0
+#endif
+
 #define JS_VALUE_GET_TAG(v) (int)((v) >> 32)
 #define JS_VALUE_GET_INT(v) (int)(v)
 #define JS_VALUE_GET_BOOL(v) (int)(v)
 #define JS_VALUE_GET_SHORT_BIG_INT(v) (int)(v)
-#define JS_VALUE_GET_PTR(v) (void *)(intptr_t)(v)
+#define JS_VALUE_GET_PTR(v) (void *)((uintptr_t)(((v) & 0x00000000ffffffffL) + (uintptr_t)JS_BASE_ADDR))
 
 #define JS_MKVAL(tag, val) (((uint64_t)(tag) << 32) | (uint32_t)(val))
-#define JS_MKPTR(tag, ptr) (((uint64_t)(tag) << 32) | (uintptr_t)(ptr))
+#define JS_MKPTR(tag, ptr) (((uint64_t)(tag) << 32) | ((uintptr_t)(ptr) - (uintptr_t)JS_BASE_ADDR))
 
 #define JS_FLOAT64_TAG_ADDEND (0x7ff80000 - JS_TAG_FIRST + 1) /* quiet NaN encoding */
 
@@ -249,7 +253,8 @@ typedef struct JSValue {
 
 #define JS_TAG_IS_FLOAT64(tag) ((unsigned)(tag) == JS_TAG_FLOAT64)
 
-#define JS_NAN (JSValue){ .u.float64 = JS_FLOAT64_NAN, JS_TAG_FLOAT64 }
+#define JS_NAN                                                                 \
+  (JSValue) { .u.float64 = JS_FLOAT64_NAN, JS_TAG_FLOAT64 }
 
 static inline JSValue __JS_NewFloat64(JSContext *ctx, double d)
 {
@@ -950,7 +955,7 @@ typedef JSModuleDef *JSModuleLoaderFunc2(JSContext *ctx,
 /* return -1 if exception, 0 if OK */
 typedef int JSModuleCheckSupportedImportAttributes(JSContext *ctx, void *opaque,
                                                    JSValueConst attributes);
-                                                   
+
 /* module_normalize = NULL is allowed and invokes the default module
    filename normalizer */
 void JS_SetModuleLoaderFunc(JSRuntime *rt,
@@ -1149,7 +1154,7 @@ int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 /* associate a JSValue to a C module */
 int JS_SetModulePrivateValue(JSContext *ctx, JSModuleDef *m, JSValue val);
 JSValue JS_GetModulePrivateValue(JSContext *ctx, JSModuleDef *m);
-                        
+
 /* debug value output */
 
 typedef struct {

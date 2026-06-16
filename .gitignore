@@ -12,6 +12,7 @@ hello.c
 microbench*.txt
 qjs
 qjs.exe
+qjs.nanbox
 qjsc
 qjsc.exe
 host-qjsc
@@ -20,6 +21,7 @@ qjscalc.c
 repl.c
 run-test262
 run-test262.exe
+run-test262.nanbox
 test262
 test262_*.txt
 test262o
@@ -27,5 +29,7 @@ test262o_*.txt
 unicode
 unicode_gen
 run_octane
+run_octane.nanbox
 run_sunspider_like
+run_sunspider_like.nanbox
 libwinpthread*.dll

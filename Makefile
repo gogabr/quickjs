@@ -213,6 +213,7 @@ endif
 endif
 
 PROGS=qjs$(EXE) qjsc$(EXE) run-test262$(EXE)
+PROGS_NANBOX=qjs.nanbox$(EXE) run-test262.nanbox$(EXE)
 
 ifneq ($(CROSS_PREFIX),)
 QJSC_CC=gcc
@@ -250,8 +251,11 @@ endif
 all: $(OBJDIR) $(OBJDIR)/quickjs.check.o $(OBJDIR)/qjs.check.o $(PROGS)
 
 QJS_LIB_OBJS=$(OBJDIR)/quickjs.o $(OBJDIR)/dtoa.o $(OBJDIR)/libregexp.o $(OBJDIR)/libunicode.o $(OBJDIR)/cutils.o $(OBJDIR)/quickjs-libc.o
+QJS_LIB_OBJS_NANBOX=$(addsuffix .nanbox.o, $(basename $(QJS_LIB_OBJS))) $(OBJDIR)/mimalloc-mf.nanbox.o
 
 QJS_OBJS=$(OBJDIR)/qjs.o $(OBJDIR)/repl.o $(QJS_LIB_OBJS)
+
+QJS_NANBOX_OBJS=$(OBJDIR)/qjs.nanbox.o $(OBJDIR)/repl.nanbox.o $(QJS_LIB_OBJS_NANBOX)
 
 HOST_LIBS=-lm -ldl -lpthread
 LIBS=-lm -lpthread
@@ -263,8 +267,18 @@ LIBS+=$(EXTRA_LIBS)
 $(OBJDIR):
 	mkdir -p $(OBJDIR) $(OBJDIR)/examples $(OBJDIR)/tests
 
+JS_BASE_ADDR?=0x10000000
+JS_ARENA_SIZE?=0xC0000000
+
+CFLAGS_NANBOX=$(CFLAGS_OPT) -DJS_USE_MIMALLOC -DJS_NAN_BOXING \
+		-DJS_BASE_ADDR=$(JS_BASE_ADDR) \
+		-DJS_ARENA_SIZE=$(JS_ARENA_SIZE)
+
 qjs$(EXE): $(QJS_OBJS)
 	$(CC) $(LDFLAGS) $(LDEXPORT) -o $@ $^ $(LIBS)
+
+qjs.nanbox$(EXE): $(QJS_NANBOX_OBJS)
+	$(CC) $(LDFLAGS) $(LDEXPORT) -o $@ $^ -lmimalloc $(LIBS)
 
 qjs-debug$(EXE): $(patsubst %.o, %.debug.o, $(QJS_OBJS))
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
@@ -309,6 +323,9 @@ endif
 libquickjs$(LTOEXT).a: $(QJS_LIB_OBJS)
 	$(AR) rcs $@ $^
 
+libquickjs.nanbox$(LTOEXT).a: $(QJS_LIB_OBJS_NANBOX)
+	$(AR) rcs $@ $^
+
 ifdef CONFIG_LTO
 libquickjs.a: $(patsubst %.o, %.nolto.o, $(QJS_LIB_OBJS))
 	$(AR) rcs $@ $^
@@ -332,6 +349,11 @@ run-test262$(EXE): $(OBJDIR)/run-test262.o $(QJS_LIB_OBJS)
 
 run-test262-debug: $(patsubst %.o, %.debug.o, $(OBJDIR)/run-test262.o $(QJS_LIB_OBJS))
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+RUN_TEST262_NANBOX_OBJS=$(OBJDIR)/run-test262.nanbox.o $(QJS_LIB_OBJS_NANBOX)
+
+run-test262.nanbox$(EXE): $(RUN_TEST262_NANBOX_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ -lmimalloc $(LIBS)
 
 # object suffix order: nolto
 
@@ -359,6 +381,9 @@ $(OBJDIR)/%.fuzz.o: %.c | $(OBJDIR)
 $(OBJDIR)/%.check.o: %.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -DCONFIG_CHECK_JSVALUE -c -o $@ $<
 
+$(OBJDIR)/%.nanbox.o: %.c | $(OBJDIR)
+	$(CC) -c $(CFLAGS_NANBOX) -o $@  $<
+
 regexp_test: libregexp.c libunicode.c cutils.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -DTEST -o $@ libregexp.c libunicode.c cutils.c $(LIBS)
 
@@ -367,12 +392,14 @@ unicode_gen: $(OBJDIR)/unicode_gen.host.o $(OBJDIR)/cutils.host.o libunicode.c u
 
 clean:
 	rm -f repl.c out.c
-	rm -f *.a *.o *.d *~ unicode_gen regexp_test fuzz_eval fuzz_compile fuzz_regexp $(PROGS)
+	rm -f *.a *.o *.d *~ unicode_gen regexp_test fuzz_evalfuzz_compile fuzz_regexp $(PROGS)
+	rm -f $(PROGS_NANBOX)
 	rm -f hello.c test_fib.c
 	rm -f examples/*.so tests/*.so
 	rm -rf $(OBJDIR)/ *.dSYM/ qjs-debug$(EXE)
 	rm -rf run-test262-debug$(EXE)
 	rm -f run_octane run_sunspider_like
+	rm -f run_octane.nanbox run_sunspider_like.nanbox
 
 install: all
 	mkdir -p "$(DESTDIR)$(PREFIX)/bin"
@@ -507,6 +534,9 @@ test2-default: run-test262
 test2: run-test262
 	time ./run-test262 -t -m -c test262.conf -a
 
+test2-nanbox: run-test262.nanbox
+	time ./run-test262.nanbox -t -m -c test262.conf -a
+
 test2-update: run-test262
 	./run-test262 -t -u -c test262.conf -a -T 1
 
@@ -542,16 +572,36 @@ tests/bjson.so: $(OBJDIR)/tests/bjson.pic.o
 
 BENCHMARKDIR=../quickjs-benchmarks
 
-run_sunspider_like: $(BENCHMARKDIR)/run_sunspider_like.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -DNO_INCLUDE_DIR -I. -o $@ $< libquickjs$(LTOEXT).a $(LIBS)
+$(OBJDIR)/%.nanbox.o: $(BENCHMARKDIR)/%.c
+	$(CC) -I.. -c $(CFLAGS_NANBOX) -o $@  $<
 
-run_octane: $(BENCHMARKDIR)/run_octane.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -DNO_INCLUDE_DIR -I. -o $@ $< libquickjs$(LTOEXT).a $(LIBS)
+$(OBJDIR)/%.o: $(BENCHMARKDIR)/%.c
+	$(CC) -I.. -c $(CFLAGS) -o $@  $<
+
+run_sunspider_like: $(OBJDIR)/run_sunspider_like.o
+	$(CC) $(LDFLAGS) -DNO_INCLUDE_DIR -I. -o $@ $< libquickjs$(LTOEXT).a $(LIBS)
+
+run_octane: $(OBJDIR)/run_octane.o
+	$(CC) $(LDFLAGS) -DNO_INCLUDE_DIR -I. -o $@ $< libquickjs$(LTOEXT).a $(LIBS)
+
+run_sunspider_like.nanbox: $(OBJDIR)/run_sunspider_like.nanbox.o
+	$(CC) $(LDFLAGS) -DNO_INCLUDE_DIR -o $@ $< libquickjs.nanbox$(LTOEXT).a \
+		-lmimalloc $(LIBS)
+
+run_octane.nanbox: $(OBJDIR)/run_octane.nanbox.o
+	$(CC) $(LDFLAGS) -DNO_INCLUDE_DIR -I. -o $@ $< libquickjs.nanbox$(LTOEXT).a \
+		-lmimalloc $(LIBS)
 
 benchmarks: run_sunspider_like run_octane
 	./run_sunspider_like $(BENCHMARKDIR)/kraken-1.0/
 	./run_sunspider_like $(BENCHMARKDIR)/kraken-1.1/
 	./run_sunspider_like $(BENCHMARKDIR)/sunspider-1.0/
 	./run_octane $(BENCHMARKDIR)/
+
+benchmarks-nanbox: run_sunspider_like.nanbox run_octane.nanbox
+	./run_sunspider_like.nanbox $(BENCHMARKDIR)/kraken-1.0/
+	./run_sunspider_like.nanbox $(BENCHMARKDIR)/kraken-1.1/
+	./run_sunspider_like.nanbox $(BENCHMARKDIR)/sunspider-1.0/
+	./run_octane.nanbox $(BENCHMARKDIR)/
 
 -include $(wildcard $(OBJDIR)/*.d)

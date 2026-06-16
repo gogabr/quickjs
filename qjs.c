@@ -450,12 +450,21 @@ int main(int argc, char **argv)
         }
     }
 
+#if defined(JS_USE_MIMALLOC)
+    extern JSMallocFunctions mimalloc_mf;
+    extern void mimalloc_setup(void);
+
+    mimalloc_setup();
+    rt = JS_NewRuntime2(&mimalloc_mf, NULL);
+    JS_SetMemoryLimit(rt, JS_ARENA_SIZE);
+#else
     if (trace_memory) {
         js_trace_malloc_init(&trace_data);
         rt = JS_NewRuntime2(&trace_mf, &trace_data);
     } else {
         rt = JS_NewRuntime();
     }
+#endif // !JS_USE_MIMALLOC
     if (!rt) {
         fprintf(stderr, "qjs: cannot allocate JS runtime\n");
         exit(2);

@@ -160,7 +160,7 @@ static int get_cpu_info_physical_cores(void)
     char line[1024], *p;
     char *field, *value;
     int len;
-    
+
     f = fopen("/proc/cpuinfo", "rb");
     if (!f)
         return -1;
@@ -186,7 +186,7 @@ static int get_cpu_info_physical_cores(void)
         while (isspace(*p))
             p++;
         value = p;
-        
+
         len = strlen(field);
         while (len > 0 && isspace(field[len - 1]))
             len--;
@@ -524,7 +524,7 @@ static JSValue js_print(JSContext *ctx, JSValueConst this_val,
     ThreadLocalStorage *tls = JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
     int i;
     JSValueConst v;
-    
+
     for (i = 0; i < argc; i++) {
         if (i != 0 && outfile)
             fputc(' ', outfile);
@@ -588,7 +588,13 @@ static void *agent_start(void *arg)
     JSValue ret_val;
     int ret;
 
+#if defined(JS_USE_MIMALLOC)
+    extern JSMallocFunctions mimalloc_mf;
+    rt = JS_NewRuntime2(&mimalloc_mf, NULL);
+#else
     rt = JS_NewRuntime();
+#endif // !JS_USE_MIMALLOC
+
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }
@@ -2119,7 +2125,7 @@ void *show_progress(void *opaque)
             static int last_test_failed;
             static int dots;
             char c = '.';
-            
+
             if (test_skipped1 > last_test_skipped)
                 c = '-';
             if (test_failed1 > last_test_failed)
@@ -2169,15 +2175,15 @@ void *run_test_dir_list(void *opaque)
     ThreadLocalStorage tls_s, *tls = &tls_s;
     namelist_t *lp = &test_list;
     int i;
-    
+
     init_thread_local_storage(tls);
-    
+
     for (i = th->thread_index; i < lp->count; i += nthreads) {
         const char *p = lp->array[i];
         int ti;
         if (INCLUDE != include_exclude_or_skip(i))
             continue;
-        
+
         if (slow_test_threshold != 0) {
             ti = get_clock_ms();
         } else {
@@ -2241,7 +2247,13 @@ int main(int argc, char **argv)
     BOOL can_block = TRUE;
     BOOL count_skipped_features = FALSE;
     clock_t clocks;
-    
+
+#if defined(JS_USE_MIMALLOC)
+    extern void mimalloc_setup(void);
+    mimalloc_setup();
+    JS_SetMemoryLimit(rt, JS_ARENA_SIZE);
+#endif
+
     init_thread_local_storage(tls);
     pthread_mutex_init(&stats_mutex, NULL);
 
@@ -2366,11 +2378,11 @@ int main(int argc, char **argv)
         harness_skip_features_count = malloc(size);
         memset(harness_skip_features_count, 0, size);
     }
-    
+
     if (is_dir_list) {
         RunTestDirThread *threads;
         int i;
-        
+
         if (optind < argc && !isdigit((unsigned char)argv[optind][0])) {
             filename = argv[optind++];
             namelist_load(&test_list, filename);
@@ -2399,7 +2411,7 @@ int main(int argc, char **argv)
         // exclude_dir_list has already been sorted by update_exclude_dirs()
         namelist_sort(&test_list);
         namelist_sort(&exclude_list);
-        
+
         for (i = 0; i < test_list.count; i++) {
             switch (include_exclude_or_skip(i)) {
             case EXCLUDE:
@@ -2421,7 +2433,7 @@ int main(int argc, char **argv)
             pthread_attr_t attr;
 
             th->thread_index = i;
-            
+
             pthread_attr_init(&attr);
             pthread_attr_setstacksize(&attr, 2 << 20); // 2 MB, glibc default
             pthread_create(&th->tid, &attr, run_test_dir_list, th);
@@ -2488,7 +2500,7 @@ int main(int argc, char **argv)
         }
         printf("\n");
     }
-    
+
     if (is_dir_list) {
         fprintf(stderr, "Result: %d/%d error%s",
                 test_failed, test_count, test_count != 1 ? "s" : "");
