@@ -79,8 +79,8 @@ const JSMallocFunctions mimalloc_mf = {
 
 void mimalloc_setup()
 {
-    if (NULL == mmap((void*)JS_BASE_ADDR, JS_ARENA_SIZE, PROT_READ | PROT_WRITE,
-                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0)) {
+    if (MAP_FAILED == mmap((void*)JS_BASE_ADDR, JS_ARENA_SIZE, PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0)) {
     fprintf(stderr, "mmap failed\n");
     exit(1);
   }
