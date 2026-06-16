@@ -955,9 +955,9 @@ typedef struct JSProperty {
         struct {            /* JS_PROP_AUTOINIT */
             /* in order to use only 2 pointers, we compress the realm
                and the init function pointer */
-            uintptr_t realm_and_id; /* realm and init_id (JS_AUTOINIT_ID_x)
-                                       in the 2 low bits */
-            void *opaque;
+            HeapPtrInt realm_and_id; /* realm and init_id (JS_AUTOINIT_ID_x)
+                                        in the 2 low bits */
+            HeapPtr opaque;
         } init;
     } u;
 } JSProperty;
@@ -6075,7 +6075,7 @@ JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
 
 static JSContext *js_autoinit_get_realm(JSProperty *pr)
 {
-    return (JSContext *)(pr->u.init.realm_and_id & ~3);
+    return HDEREF(JSContext, (HeapPtr)(pr->u.init.realm_and_id & ~3));
 }
 
 static JSAutoInitIDEnum js_autoinit_get_id(JSProperty *pr)
@@ -6086,6 +6086,9 @@ static JSAutoInitIDEnum js_autoinit_get_id(JSProperty *pr)
 static void js_autoinit_free(JSRuntime *rt, JSProperty *pr)
 {
     JS_FreeContext(js_autoinit_get_realm(pr));
+    if (js_autoinit_get_id(pr) == JS_AUTOINIT_ID_PROP && pr->u.init.opaque) {
+        js_free_rt(rt, HDEREF(void, pr->u.init.opaque));
+    }
 }
 
 static void js_autoinit_mark(JSRuntime *rt, JSProperty *pr,
@@ -8179,7 +8182,7 @@ static int JS_AutoInitProperty(JSContext *ctx, JSObject *p, JSAtom prop,
     id = js_autoinit_get_id(pr);
     func = js_autoinit_func_table[id];
     /* 'func' shall not modify the object properties 'pr' */
-    val = func(realm, p, prop, pr->u.init.opaque);
+    val = func(realm, p, prop, HDEREF_OR_NULL(void, pr->u.init.opaque));
     js_autoinit_free(ctx->rt, pr);
     prs->flags &= ~JS_PROP_TMASK;
     pr->u.value = JS_UNDEFINED;
@@ -10651,6 +10654,7 @@ static int JS_DefineAutoInitProperty(JSContext *ctx, JSValueConst this_obj,
 {
     JSObject *p;
     JSProperty *pr;
+    void *arena_copy = NULL;
 
     if (JS_VALUE_GET_TAG(this_obj) != JS_TAG_OBJECT)
         return FALSE;
@@ -10663,15 +10667,31 @@ static int JS_DefineAutoInitProperty(JSContext *ctx, JSValueConst this_obj,
         return FALSE;
     }
 
+    /* for JS_AUTOINIT_ID_PROP, opaque points to static data outside the
+       arena, so we need to allocate a copy in the arena for HREF/HDEREF
+       to work with 32-bit HeapPtr */
+    if (id == JS_AUTOINIT_ID_PROP && opaque) {
+        arena_copy = js_malloc(ctx, sizeof(JSCFunctionListEntry));
+        if (!arena_copy)
+            return -1;
+        memcpy(arena_copy, opaque, sizeof(JSCFunctionListEntry));
+    }
+
     /* Specialized CreateProperty */
     pr = add_property(ctx, p, prop, (flags & JS_PROP_C_W_E) | JS_PROP_AUTOINIT);
-    if (unlikely(!pr))
+    if (unlikely(!pr)) {
+        js_free(ctx, arena_copy);
         return -1;
-    pr->u.init.realm_and_id = (uintptr_t)JS_DupContext(ctx);
+    }
+    pr->u.init.realm_and_id = (HeapPtrInt)HREF(JS_DupContext(ctx));
     assert((pr->u.init.realm_and_id & 3) == 0);
     assert(id <= 3);
     pr->u.init.realm_and_id |= id;
-    pr->u.init.opaque = opaque;
+    if (arena_copy) {
+        pr->u.init.opaque = HREF(arena_copy);
+    } else {
+        pr->u.init.opaque = HREF(opaque);
+    }
     return TRUE;
 }
 
@@ -14220,7 +14240,7 @@ static void js_print_object(JSPrintValueState *s, JSObject *p)
                             js_printf(s, "[autoinit %p %d %p]",
                                     (void *)js_autoinit_get_realm(pr),
                                     js_autoinit_get_id(pr),
-                                    (void *)pr->u.init.opaque);
+                                      HDEREF_OR_NULL(void, pr->u.init.opaque));
                         } else {
                             /* XXX: could autoinit but need to restart
                                the iteration */
