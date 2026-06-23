@@ -144,9 +144,9 @@ static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
 
 typedef void *HeapPtr;
 typedef uintptr_t HeapPtrInt;
-#define HDEREF(tp, p) ((tp *)(p))
-#define HDEREF_OR_NULL(tp, p) ((tp*)(p))
-#define HREF(p) p
+#define HEAP2ADDR(tp, p) ((tp *)(p))
+#define HEAP2ADDR_OR_NULL(tp, p) ((tp*)(p))
+#define ADDR2HEAP(p) p
 
 #elif defined(JS_NAN_BOXING)
 
@@ -161,12 +161,12 @@ typedef uint64_t JSValue;
 typedef uint32_t HeapPtr;
 typedef uint32_t HeapPtrInt;
 
-#define HDEREF(tp, p) ((tp *)((uintptr_t)JS_BASE_ADDR + (p)))
-static inline void *__hderef_or_null(HeapPtr p) {
+#define HEAP2ADDR(tp, p) ((tp *)((uintptr_t)JS_BASE_ADDR + (p)))
+static inline void *__heap2addr_or_null(HeapPtr p) {
     return p ? (void *)((uintptr_t)JS_BASE_ADDR + p) : NULL;
 }
-#define HDEREF_OR_NULL(tp, p) ((tp*)__hderef_or_null(p))
-static inline HeapPtr HREF(void *p) {
+#define HEAP2ADDR_OR_NULL(tp, p) ((tp*)__heap2addr_or_null(p))
+static inline HeapPtr ADDR2HEAP(void *p) {
     uintptr_t up = (uintptr_t)p;
     return up ? (HeapPtr)(up - JS_BASE_ADDR) : 0;
 }
@@ -306,9 +306,9 @@ static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int64_t d)
 typedef void *HeapPtr;
 typedef uintptr_t HeapPtrInt;
 
-#define HDEREF(tp, p) ((tp*)(p))
-#define HDEREF_OR_NULL(tp, p) ((tp*)(p))
-#define HREF(p)   p
+#define HEAP2ADDR(tp, p) ((tp*)(p))
+#define HEAP2ADDR_OR_NULL(tp, p) ((tp*)(p))
+#define ADDR2HEAP(p)   p
 
 #endif /* !JS_NAN_BOXING */
 

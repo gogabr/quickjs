@@ -6075,7 +6075,7 @@ JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
 
 static JSContext *js_autoinit_get_realm(JSProperty *pr)
 {
-    return HDEREF(JSContext, (HeapPtr)(pr->u.init.realm_and_id & ~3));
+    return HEAP2ADDR(JSContext, (HeapPtr)(pr->u.init.realm_and_id & ~3));
 }
 
 static JSAutoInitIDEnum js_autoinit_get_id(JSProperty *pr)
@@ -6087,7 +6087,7 @@ static void js_autoinit_free(JSRuntime *rt, JSProperty *pr)
 {
     JS_FreeContext(js_autoinit_get_realm(pr));
     if (js_autoinit_get_id(pr) == JS_AUTOINIT_ID_PROP && pr->u.init.opaque) {
-        js_free_rt(rt, HDEREF(void, pr->u.init.opaque));
+        js_free_rt(rt, HEAP2ADDR(void, pr->u.init.opaque));
     }
 }
 
@@ -6102,9 +6102,9 @@ static void free_property(JSRuntime *rt, JSProperty *pr, int prop_flags)
     if (unlikely(prop_flags & JS_PROP_TMASK)) {
         if ((prop_flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
             if (pr->u.getset.getter)
-                JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.getter)));
+                JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.getter)));
             if (pr->u.getset.setter)
-                JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.setter)));
+                JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.setter)));
         } else if ((prop_flags & JS_PROP_TMASK) == JS_PROP_VARREF) {
             free_var_ref(rt, pr->u.var_ref);
         } else if ((prop_flags & JS_PROP_TMASK) == JS_PROP_AUTOINIT) {
@@ -6588,9 +6588,9 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                     if (prs->flags & JS_PROP_TMASK) {
                         if ((prs->flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
                             if (pr->u.getset.getter)
-                                mark_func(rt, &HDEREF(JSObject, pr->u.getset.getter)->header);
+                                mark_func(rt, &HEAP2ADDR(JSObject, pr->u.getset.getter)->header);
                             if (pr->u.getset.setter)
-                                mark_func(rt, &HDEREF(JSObject, pr->u.getset.setter)->header);
+                                mark_func(rt, &HEAP2ADDR(JSObject, pr->u.getset.setter)->header);
                         } else if ((prs->flags & JS_PROP_TMASK) == JS_PROP_VARREF) {
                             /* Note: the tag does not matter
                                provided it is a GC object */
@@ -8182,7 +8182,7 @@ static int JS_AutoInitProperty(JSContext *ctx, JSObject *p, JSAtom prop,
     id = js_autoinit_get_id(pr);
     func = js_autoinit_func_table[id];
     /* 'func' shall not modify the object properties 'pr' */
-    val = func(realm, p, prop, HDEREF_OR_NULL(void, pr->u.init.opaque));
+    val = func(realm, p, prop, HEAP2ADDR_OR_NULL(void, pr->u.init.opaque));
     js_autoinit_free(ctx->rt, pr);
     prs->flags &= ~JS_PROP_TMASK;
     pr->u.value = JS_UNDEFINED;
@@ -8276,7 +8276,7 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
                     if (unlikely(!pr->u.getset.getter)) {
                         return JS_UNDEFINED;
                     } else {
-                        JSValue func = JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.getter));
+                        JSValue func = JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.getter));
                         /* Note: the field could be removed in the getter */
                         func = JS_DupValue(ctx, func);
                         return JS_CallFree(ctx, func, this_obj, 0, NULL);
@@ -8835,9 +8835,9 @@ retry:
                 if ((prs->flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
                     desc->flags |= JS_PROP_GETSET;
                     if (pr->u.getset.getter)
-                        desc->getter = JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.getter)));
+                        desc->getter = JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.getter)));
                     if (pr->u.getset.setter)
-                        desc->setter = JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.setter)));
+                        desc->setter = JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.setter)));
                 } else if ((prs->flags & JS_PROP_TMASK) == JS_PROP_VARREF) {
                     JSValue val = *pr->u.var_ref->pvalue;
                     if (unlikely(JS_IsUninitialized(val))) {
@@ -9719,7 +9719,7 @@ int JS_SetPropertyInternal(JSContext *ctx, JSValueConst obj,
             assert(prop == JS_ATOM_length);
             return set_array_length(ctx, p, val, flags);
         } else if ((prs->flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
-            return call_setter(ctx, HDEREF_OR_NULL(JSObject, pr->u.getset.setter), this_obj, val, flags);
+            return call_setter(ctx, HEAP2ADDR_OR_NULL(JSObject, pr->u.getset.setter), this_obj, val, flags);
         } else if ((prs->flags & JS_PROP_TMASK) == JS_PROP_VARREF) {
             /* XXX: already use var_ref->is_const. Cannot simplify use the
                writable flag for JS_CLASS_MODULE_NS. */
@@ -9843,7 +9843,7 @@ int JS_SetPropertyInternal(JSContext *ctx, JSValueConst obj,
         prs = find_own_property(&pr, p1, prop);
         if (prs) {
             if ((prs->flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
-                return call_setter(ctx, HDEREF_OR_NULL(JSObject, pr->u.getset.setter), this_obj, val, flags);
+                return call_setter(ctx, HEAP2ADDR_OR_NULL(JSObject, pr->u.getset.setter), this_obj, val, flags);
             } else if ((prs->flags & JS_PROP_TMASK) == JS_PROP_AUTOINIT) {
                 /* Instantiate property and retry (potentially useless) */
                 if (JS_AutoInitProperty(ctx, p1, prop, pr, prs))
@@ -10245,12 +10245,12 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
         pr->u.getset.getter = (HeapPtr)0;
         if ((flags & JS_PROP_HAS_GET) && JS_IsFunction(ctx, getter)) {
             pr->u.getset.getter =
-                HREF(JS_VALUE_GET_OBJ(JS_DupValue(ctx, getter)));
+                ADDR2HEAP(JS_VALUE_GET_OBJ(JS_DupValue(ctx, getter)));
         }
         pr->u.getset.setter = (HeapPtr)0;
         if ((flags & JS_PROP_HAS_SET) && JS_IsFunction(ctx, setter)) {
             pr->u.getset.setter =
-                HREF(JS_VALUE_GET_OBJ(JS_DupValue(ctx, setter)));
+                ADDR2HEAP(JS_VALUE_GET_OBJ(JS_DupValue(ctx, setter)));
         }
     } else if (p->class_id == JS_CLASS_GLOBAL_OBJECT) {
         if (delete_obj)
@@ -10431,28 +10431,28 @@ int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
                 } else {
                     if (!(prs->flags & JS_PROP_CONFIGURABLE)) {
                         if ((flags & JS_PROP_HAS_GET) &&
-                            new_getter != HDEREF_OR_NULL(JSObject, pr->u.getset.getter)) {
+                            new_getter != HEAP2ADDR_OR_NULL(JSObject, pr->u.getset.getter)) {
                             goto not_configurable;
                         }
                         if ((flags & JS_PROP_HAS_SET) &&
-                            new_setter != HDEREF_OR_NULL(JSObject, pr->u.getset.setter)) {
+                            new_setter != HEAP2ADDR_OR_NULL(JSObject, pr->u.getset.setter)) {
                             goto not_configurable;
                         }
                     }
                 }
                 if (flags & JS_PROP_HAS_GET) {
                     if (pr->u.getset.getter)
-                        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.getter)));
+                        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.getter)));
                     if (new_getter)
                         JS_DupValue(ctx, getter);
-                    pr->u.getset.getter = HREF(new_getter);
+                    pr->u.getset.getter = ADDR2HEAP(new_getter);
                 }
                 if (flags & JS_PROP_HAS_SET) {
                     if (pr->u.getset.setter)
-                        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.setter)));
+                        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.setter)));
                     if (new_setter)
                         JS_DupValue(ctx, setter);
-                    pr->u.getset.setter = HREF(new_setter);
+                    pr->u.getset.setter = ADDR2HEAP(new_setter);
                 }
             } else {
                 if ((prs->flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
@@ -10471,9 +10471,9 @@ int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
                         return -1;
                     }
                     if (pr->u.getset.getter)
-                        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.getter)));
+                        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.getter)));
                     if (pr->u.getset.setter)
-                        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.setter)));
+                        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.setter)));
                     if (var_ref) {
                         prs->flags = (prs->flags & ~JS_PROP_TMASK) |
                             JS_PROP_VARREF | JS_PROP_WRITABLE;
@@ -10668,7 +10668,7 @@ static int JS_DefineAutoInitProperty(JSContext *ctx, JSValueConst this_obj,
     }
 
     /* for JS_AUTOINIT_ID_PROP, opaque points to static data outside the
-       arena, so we need to allocate a copy in the arena for HREF/HDEREF
+       arena, so we need to allocate a copy in the arena for ADDR2HEAP/HEAP2ADDR
        to work with 32-bit HeapPtr */
     if (id == JS_AUTOINIT_ID_PROP && opaque) {
         arena_copy = js_malloc(ctx, sizeof(JSCFunctionListEntry));
@@ -10683,14 +10683,14 @@ static int JS_DefineAutoInitProperty(JSContext *ctx, JSValueConst this_obj,
         js_free(ctx, arena_copy);
         return -1;
     }
-    pr->u.init.realm_and_id = (HeapPtrInt)HREF(JS_DupContext(ctx));
+    pr->u.init.realm_and_id = (HeapPtrInt)ADDR2HEAP(JS_DupContext(ctx));
     assert((pr->u.init.realm_and_id & 3) == 0);
     assert(id <= 3);
     pr->u.init.realm_and_id |= id;
     if (arena_copy) {
-        pr->u.init.opaque = HREF(arena_copy);
+        pr->u.init.opaque = ADDR2HEAP(arena_copy);
     } else {
-        pr->u.init.opaque = HREF(opaque);
+        pr->u.init.opaque = ADDR2HEAP(opaque);
     }
     return TRUE;
 }
@@ -14218,8 +14218,8 @@ static void js_print_object(JSPrintValueState *s, JSObject *p)
                     if ((prs->flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
                         if (s->options.raw_dump) {
                           js_printf(s, "[Getter %p Setter %p]",
-                                    HDEREF_OR_NULL(JSObject, pr->u.getset.getter),
-                                    HDEREF_OR_NULL(JSObject, pr->u.getset.setter));
+                                    HEAP2ADDR_OR_NULL(JSObject, pr->u.getset.getter),
+                                    HEAP2ADDR_OR_NULL(JSObject, pr->u.getset.setter));
                         } else {
                             if (pr->u.getset.getter && pr->u.getset.setter) {
                                 js_printf(s, "[Getter/Setter]");
@@ -14240,7 +14240,7 @@ static void js_print_object(JSPrintValueState *s, JSObject *p)
                             js_printf(s, "[autoinit %p %d %p]",
                                     (void *)js_autoinit_get_realm(pr),
                                     js_autoinit_get_id(pr),
-                                      HDEREF_OR_NULL(void, pr->u.init.opaque));
+                                      HEAP2ADDR_OR_NULL(void, pr->u.init.opaque));
                         } else {
                             /* XXX: could autoinit but need to restart
                                the iteration */
@@ -16195,8 +16195,8 @@ static JSValue js_build_arguments(JSContext *ctx, int argc, JSValueConst *argv)
 
     props[0].u.value = JS_NewInt32(ctx, argc); /* length */
     props[1].u.value = JS_DupValue(ctx, ctx->array_proto_values); /* Symbol.iterator */
-    props[2].u.getset.getter = HREF(JS_VALUE_GET_OBJ(JS_DupValue(ctx, ctx->throw_type_error))); /* callee */
-    props[2].u.getset.setter = HREF(JS_VALUE_GET_OBJ(JS_DupValue(ctx, ctx->throw_type_error))); /* callee */
+    props[2].u.getset.getter = ADDR2HEAP(JS_VALUE_GET_OBJ(JS_DupValue(ctx, ctx->throw_type_error))); /* callee */
+    props[2].u.getset.setter = ADDR2HEAP(JS_VALUE_GET_OBJ(JS_DupValue(ctx, ctx->throw_type_error))); /* callee */
 
     val = JS_NewObjectFromShape(ctx, js_dup_shape(ctx->arguments_shape),
                                 JS_CLASS_ARGUMENTS, props);
@@ -48596,7 +48596,7 @@ static BOOL check_regexp_getter(JSContext *ctx,
         return FALSE;
     if (!pr->u.getset.getter)
         return FALSE;
-    return JS_IsCFunction(ctx, JS_MKPTR(JS_TAG_OBJECT, HDEREF(JSObject, pr->u.getset.getter)),
+    return JS_IsCFunction(ctx, JS_MKPTR(JS_TAG_OBJECT, HEAP2ADDR(JSObject, pr->u.getset.getter)),
                           func, magic);
 }
 
@@ -61215,14 +61215,4 @@ int JS_AddIntrinsicWeakRef(JSContext *ctx)
         return -1;
     JS_FreeValue(ctx, obj);
     return 0;
-}
-
-void *js_value_get_ptr(JSValue v)
-{
-  return JS_VALUE_GET_PTR(v);
-}
-
-void *hderef(HeapPtr p)
-{
-    return HDEREF_OR_NULL(void, p);
 }
