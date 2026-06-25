@@ -1,7 +1,17 @@
 #include <assert.h>
-#include <sys/mman.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#ifdef _WIN32
+#  include <windows.h>
+#  define getpid() 0
+#  define pthread_self() NULL
+#else /* unix */
+#  include <sys/mman.h>
+#  ifndef NAP_FIXED_NOREPLACE
+#    define MAP_FIXED_NOREPLACE MAP_FIXED
+#  endif
+#endif
 
 #include "mimalloc.h"
 
@@ -18,8 +28,8 @@
 static inline int is_in_arena(const void *ptr)
 {
     uintptr_t addr = (uintptr_t)ptr;
-    return addr >= JS_BASE_ADDR &&
-           addr < JS_BASE_ADDR + JS_ARENA_SIZE;
+    return addr >= (uintptr_t)JS_BASE_ADDR &&
+           addr < (uintptr_t)JS_BASE_ADDR + JS_ARENA_SIZE;
 }
 
 static void *mi_malloc_wrap(JSMallocState *s, size_t size)
@@ -118,17 +128,32 @@ const JSMallocFunctions mimalloc_mf = {
     mi_malloc_usable_size,
 };
 
-void mimalloc_setup()
+bool mimalloc_setup()
 {
+#ifdef _WIN32
+    /* NB! Never run, never debugged! */
+    if (NULL == VirtualAlloc((void*)JS_BASE_ADDR, JS_ARENA_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)) {
+        fprintf(stderr, "mmap failed\n");
+        return false;
+    }
+#else
     if (MAP_FAILED == mmap((void*)JS_BASE_ADDR, JS_ARENA_SIZE, PROT_READ | PROT_WRITE,
-                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0)) {
-    fprintf(stderr, "mmap failed\n");
-    exit(1);
-  }
+                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0)) {
+        fprintf(stderr, "mmap failed\n");
+        return false;
+    }
+#endif
     if (!mi_manage_os_memory((void*)JS_BASE_ADDR, JS_ARENA_SIZE, false, false, false, -1)) {
-    fprintf(stderr, "mi_manage failed\n");
-    exit(1);
-  }
+        fprintf(stderr, "mi_manage failed\n");
+        return false;
+    }
     /* prevent mimalloc from using OS allocations when the arena is exhausted */
     mi_option_set(mi_option_limit_os_alloc, 1);
+
+    return true;
+}
+
+JSRuntime *JS_NewRuntimeMimalloc(void)
+{
+    return JS_NewRuntime2(&mimalloc_mf, NULL);
 }
