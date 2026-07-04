@@ -32,6 +32,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <time.h>
+#if defined(JS_USE_MIMALLOC)
+#include "mimalloc-mf.h"
+#endif
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
 #elif defined(__linux__) || defined(__GLIBC__)
@@ -451,12 +454,12 @@ int main(int argc, char **argv)
     }
 
 #if defined(JS_USE_MIMALLOC)
-    extern JSMallocFunctions mimalloc_mf;
-    extern void mimalloc_setup(void);
-
-    mimalloc_setup();
-    rt = JS_NewRuntime2(&mimalloc_mf, NULL);
-    JS_SetMemoryLimit(rt, JS_ARENA_SIZE);
+    void *heap = mimalloc_setup();
+    if (!heap) {
+        fprintf(stderr, "Mimalloc setup failed\n");
+        exit(2);
+    }
+    rt = JS_NewRuntimeMimalloc(heap);
 #else
     if (trace_memory) {
         js_trace_malloc_init(&trace_data);

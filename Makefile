@@ -203,6 +203,11 @@ LDEXPORT=
 else
 LDEXPORT=-rdynamic
 endif
+ifdef CONFIG_DARWIN
+CFLAGS+=-I/opt/homebrew/include
+LDFLAGS+= -L/opt/homebrew/lib
+JS_BASE_ADDR?=0x300000000
+endif
 
 ifndef CONFIG_COSMO
 ifndef CONFIG_DARWIN

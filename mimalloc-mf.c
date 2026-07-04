@@ -34,34 +34,35 @@ static inline int is_in_arena(const void *ptr)
 
 static void *mi_malloc_wrap(JSMallocState *s, size_t size)
 {
-  void *ptr;
-  assert(size != 0);
+    mi_heap_t *mi_heap = (mi_heap_t *)s->opaque;
+    void *ptr;
+    assert(size != 0);
 
-  if (unlikely(s->malloc_size + size > s->malloc_limit))
+    if (unlikely(s->malloc_size + size > s->malloc_limit))
         return NULL;
 
-  ptr = mi_malloc(size);
-  if (!ptr) {
-      /* the managed arena may have been exhausted by abandoned pages;
-         force a collection to reclaim them and retry once */
-      mi_collect(true);
-      ptr = mi_malloc(size);
-  }
-  if (!ptr)
-      return NULL;
+    ptr = mi_heap_malloc(mi_heap, size);
+    if (!ptr) {
+        /* the managed arena may have been exhausted by abandoned pages;
+           force a collection to reclaim them and retry once */
+        mi_heap_collect(mi_heap, true);
+        ptr = mi_heap_malloc(mi_heap, size);
+    }
+    if (!ptr)
+        return NULL;
 
-  /* mimalloc may fall back to OS allocations when the managed arena
-     is exhausted, yielding pointers outside JS_BASE_ADDR..JS_BASE_ADDR+JS_ARENA_SIZE.
-     Such pointers break the HeapPtr scheme.  Reject them so that the
-     engine sees a proper allocation failure instead of a later crash. */
-  if (unlikely(!is_in_arena(ptr))) {
-      mi_free(ptr);
-      return NULL;
-  }
+    /* mimalloc may fall back to OS allocations when the managed arena
+       is exhausted, yielding pointers outside JS_BASE_ADDR..JS_BASE_ADDR+JS_ARENA_SIZE.
+       Such pointers break the HeapPtr scheme.  Reject them so that the
+       engine sees a proper allocation failure instead of a later crash. */
+    if (unlikely(!is_in_arena(ptr))) {
+        mi_free(ptr);
+        return NULL;
+    }
 
-  s->malloc_count++;
-  s->malloc_size += mi_malloc_usable_size(ptr);
-  return ptr;
+    s->malloc_count++;
+    s->malloc_size += mi_malloc_usable_size(ptr);
+    return ptr;
 }
 
 static void mi_free_wrap(JSMallocState *s, void *ptr)
@@ -76,6 +77,7 @@ static void mi_free_wrap(JSMallocState *s, void *ptr)
 
 static void *mi_realloc_wrap(JSMallocState *s, void *ptr, size_t size)
 {
+    mi_heap_t *mi_heap = (mi_heap_t *)s->opaque;
     size_t old_size;
     void *new_ptr;
     size_t copy_size;
@@ -99,10 +101,10 @@ static void *mi_realloc_wrap(JSMallocState *s, void *ptr, size_t size)
        mi_realloc frees the old block on success, so if the new pointer
        is outside the managed arena we cannot safely reject it: the old
        data would already be lost, and the caller's pointer would dangle. */
-    new_ptr = mi_malloc(size);
+    new_ptr = mi_heap_malloc(mi_heap, size);
     if (!new_ptr) {
-        mi_collect(true);
-        new_ptr = mi_malloc(size);
+        mi_heap_collect(mi_heap, true);
+        new_ptr = mi_heap_malloc(mi_heap, size);
     }
     if (!new_ptr)
         return NULL;
@@ -128,32 +130,31 @@ const JSMallocFunctions mimalloc_mf = {
     mi_malloc_usable_size,
 };
 
-bool mimalloc_setup()
+void *mimalloc_setup()
 {
 #ifdef _WIN32
     /* NB! Never run, never debugged! */
     if (NULL == VirtualAlloc((void*)JS_BASE_ADDR, JS_ARENA_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)) {
         fprintf(stderr, "mmap failed\n");
-        return false;
+        return NULL;
     }
 #else
     if (MAP_FAILED == mmap((void*)JS_BASE_ADDR, JS_ARENA_SIZE, PROT_READ | PROT_WRITE,
                            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0)) {
         fprintf(stderr, "mmap failed\n");
-        return false;
+        return NULL;
     }
 #endif
-    if (!mi_manage_os_memory((void*)JS_BASE_ADDR, JS_ARENA_SIZE, false, false, false, -1)) {
+    mi_arena_id_t arena_id;
+    if (!mi_manage_os_memory_ex((void*)JS_BASE_ADDR, JS_ARENA_SIZE, false, false, false, -1, false, &arena_id)) {
         fprintf(stderr, "mi_manage failed\n");
-        return false;
+        return NULL;
     }
-    /* prevent mimalloc from using OS allocations when the arena is exhausted */
-    mi_option_set(mi_option_limit_os_alloc, 1);
 
-    return true;
+    return mi_heap_new_in_arena(arena_id);
 }
 
-JSRuntime *JS_NewRuntimeMimalloc(void)
+JSRuntime *JS_NewRuntimeMimalloc(void *heap)
 {
-    return JS_NewRuntime2(&mimalloc_mf, NULL);
+    return JS_NewRuntime2(&mimalloc_mf, heap);
 }

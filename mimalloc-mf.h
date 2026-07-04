@@ -5,8 +5,8 @@
 extern "C" {
 #endif
 
-bool mimalloc_setup(void);
-JSRuntime *JS_NewRuntimeMimalloc(void);
+void *mimalloc_setup(void);
+JSRuntime *JS_NewRuntimeMimalloc(void *heap);
 
 #ifdef __cplusplus
 } /* extern "C" { */

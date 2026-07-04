@@ -43,6 +43,10 @@
 #include "cutils.h"
 #include "list.h"
 #include "quickjs-libc.h"
+#if defined(JS_USE_MIMALLOC)
+#  include "mimalloc.h"
+#  include "mimalloc-mf.h"
+#endif
 
 #define CMD_NAME "run-test262"
 
@@ -129,6 +133,11 @@ int start_index, stop_index;
 int test_excluded;
 _Atomic int test_count, test_failed, test_skipped;
 _Atomic int new_errors, changed_errors, fixed_errors;
+
+
+#if defined(JS_USE_MIMALLOC)
+mi_heap_t *mi_heap = NULL;
+#endif
 
 void warning(const char *, ...) __attribute__((__format__(__printf__, 1, 2)));
 void fatal(int, const char *, ...) __attribute__((__format__(__printf__, 2, 3)));
@@ -589,9 +598,7 @@ static void *agent_start(void *arg)
     int ret;
 
 #if defined(JS_USE_MIMALLOC)
-    extern JSMallocFunctions mimalloc_mf;
-    rt = JS_NewRuntime2(&mimalloc_mf, NULL);
-    JS_SetMemoryLimit(rt, JS_ARENA_SIZE);
+    rt = JS_NewRuntimeMimalloc(mi_heap);
 #else
     rt = JS_NewRuntime();
 #endif // !JS_USE_MIMALLOC
@@ -2250,8 +2257,7 @@ int main(int argc, char **argv)
     clock_t clocks;
 
 #if defined(JS_USE_MIMALLOC)
-    extern void mimalloc_setup(void);
-    mimalloc_setup();
+    mi_heap = mimalloc_setup();
 #endif
 
     init_thread_local_storage(tls);
